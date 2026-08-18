@@ -13,12 +13,15 @@ import SwiftUI
 struct BetterCaptureApp: App {
     @State private var viewModel = RecorderViewModel()
     @State private var updaterService = UpdaterService()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     var body: some Scene {
         // Menu bar extra - the primary interface
         // Using .window style to support custom toggle switches
         MenuBarExtra {
             MenuBarView(viewModel: viewModel)
                 .task {
+                    appDelegate.viewModel = viewModel
                     await viewModel.requestPermissionsOnLaunch()
                     registerKeyboardShortcuts()
                 }

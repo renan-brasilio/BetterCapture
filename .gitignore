@@ -97,3 +97,6 @@ Temporary Items
 
 # Snippets
 snippets/
+
+# Build output
+build/

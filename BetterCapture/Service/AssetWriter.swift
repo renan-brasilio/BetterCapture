@@ -24,6 +24,11 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
     private var audioInput: AVAssetWriterInput?
     private var microphoneInput: AVAssetWriterInput?
 
+    /// Mixes system audio and microphone into `audioInput` as a single track. Only used
+    /// when both are enabled - see `setup(url:settings:videoSize:)`.
+    private let audioMixer = AudioMixer()
+    private var isMixingAudio = false
+
     private(set) var isWriting = false
     private(set) var outputURL: URL?
 
@@ -75,6 +80,11 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
     /// Whether the head of each audio track has already been padded with silence.
     private var hasPaddedAudio = false
     private var hasPaddedMicrophone = false
+
+    /// Running counters logged periodically to trace `appendAudioSample` behavior over
+    /// the whole recording, not just its first call.
+    private var audioAppendAcceptCount = 0
+    private var audioAppendDropCount = 0
 
     /// Upper bound on how many frames a single gap may be filled with, as a
     /// multiple of `gridFrameRate`. A capture that stalls for longer than this is
@@ -150,25 +160,50 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
             )
         }
 
-        // Configure audio input for system audio
-        if settings.captureSystemAudio {
-            let audioSettings = AssetWriterSettings.audio(from: settings)
-            audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
+        // When both system audio and microphone are enabled, mix them into a single track
+        // via AudioMixer instead of writing two separate tracks. Two tracks meant most
+        // players (QuickTime, Finder Quick Look) only played the first one back by
+        // default, making the microphone sound "missing" whenever system audio was quiet.
+        isMixingAudio = settings.captureSystemAudio && settings.captureMicrophone
+
+        if isMixingAudio {
+            let mixedSettings = AssetWriterSettings.audio(from: settings)
+            audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: mixedSettings)
             audioInput?.expectsMediaDataInRealTime = true
 
             if let audioInput, assetWriter.canAdd(audioInput) {
                 assetWriter.add(audioInput)
+                logger.info("Mixed audio track added to writer")
+            } else {
+                logger.error("Mixed audio track REJECTED by canAdd(audioInput) - no audio will be written")
             }
-        }
 
-        // Configure microphone input as separate track
-        if settings.captureMicrophone {
-            let micSettings = AssetWriterSettings.audio(from: settings)
-            microphoneInput = AVAssetWriterInput(mediaType: .audio, outputSettings: micSettings)
-            microphoneInput?.expectsMediaDataInRealTime = true
+            audioMixer.onMixedSampleBuffer = { [weak self] mixed in
+                self?.appendAudioSample(mixed)
+            }
+            try audioMixer.start()
+            logger.info("AudioMixer started")
+        } else {
+            // Configure audio input for system audio
+            if settings.captureSystemAudio {
+                let audioSettings = AssetWriterSettings.audio(from: settings)
+                audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
+                audioInput?.expectsMediaDataInRealTime = true
 
-            if let microphoneInput, assetWriter.canAdd(microphoneInput) {
-                assetWriter.add(microphoneInput)
+                if let audioInput, assetWriter.canAdd(audioInput) {
+                    assetWriter.add(audioInput)
+                }
+            }
+
+            // Configure microphone input as separate track
+            if settings.captureMicrophone {
+                let micSettings = AssetWriterSettings.audio(from: settings)
+                microphoneInput = AVAssetWriterInput(mediaType: .audio, outputSettings: micSettings)
+                microphoneInput?.expectsMediaDataInRealTime = true
+
+                if let microphoneInput, assetWriter.canAdd(microphoneInput) {
+                    assetWriter.add(microphoneInput)
+                }
             }
         }
 
@@ -347,7 +382,18 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
                 let audioInput,
                 audioInput.isReadyForMoreMediaData
             else {
+                audioAppendDropCount += 1
+                if audioAppendDropCount % 20 == 1 {
+                    logger.error(
+                        "Dropping audio sample x\(self.audioAppendDropCount) - writerStatus=\(String(describing: self.assetWriter?.status.rawValue)), hasAudioInput=\(self.audioInput != nil), isReady=\(String(describing: self.audioInput?.isReadyForMoreMediaData))"
+                    )
+                }
                 return
+            }
+
+            audioAppendAcceptCount += 1
+            if audioAppendAcceptCount % 20 == 1 {
+                logger.info("Accepted audio sample x\(self.audioAppendAcceptCount)")
             }
 
             startSessionIfNeeded(at: CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
@@ -514,6 +560,8 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
         hasLoggedFirstFrame = false
         hasPaddedAudio = false
         hasPaddedMicrophone = false
+        audioAppendAcceptCount = 0
+        audioAppendDropCount = 0
     }
 
     // MARK: - Finalization
@@ -523,6 +571,9 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
     ///            means the file holds audio only, which happens when the capture source
     ///            stopped producing frames while audio kept flowing.
     func finishWriting() async throws -> (url: URL, videoFrameCount: Int) {
+        audioMixer.stop()
+        isMixingAudio = false
+
         // First critical section: validate state and let the drain loop close the video
         let (writerToFinish, url): (AVAssetWriter, URL)
 
@@ -613,6 +664,9 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
 
     /// Cancels the current writing session
     func cancel() {
+        audioMixer.stop()
+        isMixingAudio = false
+
         lock.withLockUnchecked {
             assetWriter?.cancelWriting()
             isWriting = false
@@ -652,12 +706,20 @@ extension AssetWriter {
     func captureEngine(
         _ engine: CaptureEngine, didOutputAudioSampleBuffer sampleBuffer: CMSampleBuffer
     ) {
-        appendAudioSample(sampleBuffer)
+        if isMixingAudio {
+            audioMixer.mixSystemAudio(sampleBuffer)
+        } else {
+            appendAudioSample(sampleBuffer)
+        }
     }
 
     func captureEngine(
         _ engine: CaptureEngine, didOutputMicrophoneSampleBuffer sampleBuffer: CMSampleBuffer
     ) {
-        appendMicrophoneSample(sampleBuffer)
+        if isMixingAudio {
+            audioMixer.mixMicrophone(sampleBuffer)
+        } else {
+            appendMicrophoneSample(sampleBuffer)
+        }
     }
 }

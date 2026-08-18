@@ -146,11 +146,14 @@ final class RecorderViewModel {
 
     /// Presents the system content sharing picker
     func presentPicker() {
+        startCameraSessionForPresenterOverlayIfNeeded()
         captureEngine.presentPicker()
     }
 
     /// Presents the area selection overlay on the display under the cursor
     func presentAreaSelection() async {
+        startCameraSessionForPresenterOverlayIfNeeded()
+
         // Dismiss any existing border frame so it doesn't overlap the selection overlay
         selectionBorderFrame.dismiss()
 
@@ -222,6 +225,19 @@ final class RecorderViewModel {
             selectionBorderFrame.dismiss()
             logger.error("Failed to get shareable content for area selection: \(error.localizedDescription)")
         }
+    }
+
+    /// Starts the camera session as soon as content selection begins, rather than
+    /// waiting until recording starts.
+    ///
+    /// The system's Presenter Overlay toggle only becomes available in Control Center
+    /// once an `AVCaptureSession` is active alongside the `SCStream`. Starting it only
+    /// at `startRecording()` meant the toggle wasn't available until after the SCStream
+    /// was already running, forcing the user to enable it mid-recording. Starting it here
+    /// instead lets them turn it on before they ever hit record.
+    private func startCameraSessionForPresenterOverlayIfNeeded() {
+        guard settings.presenterOverlayEnabled else { return }
+        Task { await cameraSession.start(deviceID: settings.selectedCameraID) }
     }
 
     /// Starts a new recording session
@@ -366,6 +382,7 @@ final class RecorderViewModel {
         captureEngine.clearSelection()
         selectionBorderFrame.dismiss()
         recordingOverlay.dismiss()
+        cameraSession.stop()
         await previewService.stopPreview()
         previewService.clearPreview()
     }
@@ -510,6 +527,7 @@ extension RecorderViewModel: CaptureEngineDelegate {
 
         // Dismiss the overlay if it was shown after a previous selection
         recordingOverlay.dismiss()
+        cameraSession.stop()
 
         // Stop and clear the preview
         Task {
@@ -532,5 +550,6 @@ extension RecorderViewModel: PreviewServiceDelegate {
         // Clear the content filter in capture engine and deactivate picker
         captureEngine.clearSelection()
         captureEngine.deactivatePicker()
+        cameraSession.stop()
     }
 }
