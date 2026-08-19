@@ -257,6 +257,19 @@ struct GeneralSettingsView: View {
                             .truncationMode(.middle)
                     }
                 }
+
+                TextField("Filename Format", text: $settings.filenameTemplate)
+
+                LabeledContent("Preview") {
+                    Text(settings.generateFilename())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Text("Use {date} and {time} as placeholders - e.g. \(SettingsStore.defaultFilenameTemplate)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Recording") {

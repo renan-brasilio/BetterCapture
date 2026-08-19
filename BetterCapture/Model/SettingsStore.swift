@@ -587,6 +587,26 @@ final class SettingsStore {
         URL.homeDirectory.appending(path: "Movies/BetterCapture")
     }
 
+    /// Default filename template - matches the format recordings used before this setting existed.
+    static let defaultFilenameTemplate = "BetterCapture_{date}-{time}"
+
+    /// Template used to name new recordings. Supports `{date}` (yyyy-MM-dd) and `{time}`
+    /// (HH.mm.ss) placeholders; the container's file extension is appended automatically.
+    var filenameTemplate: String {
+        get {
+            access(keyPath: \.filenameTemplate)
+            guard let stored = defaults.string(forKey: "filenameTemplate"), !stored.isEmpty else {
+                return Self.defaultFilenameTemplate
+            }
+            return stored
+        }
+        set {
+            withMutation(keyPath: \.filenameTemplate) {
+                defaults.set(newValue, forKey: "filenameTemplate")
+            }
+        }
+    }
+
     /// Security-scoped bookmark data for the custom output directory
     private var customOutputDirectoryBookmark: Data? {
         get {
@@ -751,16 +771,33 @@ final class SettingsStore {
 
     // MARK: - Helper Methods
 
-    /// Generates a filename based on the current timestamp
-    func generateFilename() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd-HH.mm.ss"
-        let timestamp = formatter.string(from: Date())
-        return "BetterCapture_\(timestamp).\(containerFormat.fileExtension)"
+    /// Expands `filenameTemplate`'s `{date}`/`{time}` placeholders against a given moment
+    /// and appends the container's file extension.
+    func generateFilename(for date: Date = Date()) -> String {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "HH.mm.ss"
+
+        let expanded = filenameTemplate
+            .replacingOccurrences(of: "{date}", with: dateFormatter.string(from: date))
+            .replacingOccurrences(of: "{time}", with: timeFormatter.string(from: date))
+
+        return "\(Self.sanitizedFilenameComponent(expanded)).\(containerFormat.fileExtension)"
     }
 
     /// Returns the full output URL for a new recording
     func generateOutputURL() -> URL {
         outputDirectory.appending(path: generateFilename())
+    }
+
+    /// Strips path separators from a user-editable filename template's expansion, so it
+    /// can never create subdirectories or escape the output directory, and falls back to
+    /// the default base name if editing leaves nothing usable.
+    private static func sanitizedFilenameComponent(_ raw: String) -> String {
+        let invalidCharacters = CharacterSet(charactersIn: "/\\:")
+        let sanitized = raw.components(separatedBy: invalidCharacters).joined(separator: "-")
+        let trimmed = sanitized.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "BetterCapture" : trimmed
     }
 }
