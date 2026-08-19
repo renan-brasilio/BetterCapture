@@ -411,6 +411,37 @@ final class RecorderViewModel {
         }
     }
 
+    /// Cancels the current recording, discarding whatever has been captured so far.
+    /// Unlike `stopRecording()`, the output file is deleted rather than finalized.
+    func cancelRecording() async {
+        guard isRecording else { return }
+
+        state = .stopping
+        isPaused = false
+        // Release any pending Presenter Overlay / countdown wait so `startRecording()`
+        // doesn't stay suspended after the recording it belongs to has been torn down.
+        countdownOverlay.cancel()
+        isPreparing = false
+        stopTimer()
+        selectionBorderFrame.dismiss()
+
+        do {
+            try await captureEngine.stopCapture()
+        } catch {
+            logger.error("Failed to stop capture while cancelling: \(error.localizedDescription)")
+        }
+
+        cameraSession.stop()
+        isPresenterOverlayActive = false
+        assetWriter.cancel()
+        settings.stopAccessingOutputDirectory()
+
+        state = .idle
+        recordingDuration = 0
+
+        logger.info("Recording cancelled and discarded")
+    }
+
     /// Pauses or resumes the current recording.
     ///
     /// The capture stream, camera session, and Presenter Overlay all keep running the

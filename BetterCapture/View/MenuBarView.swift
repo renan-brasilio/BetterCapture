@@ -41,6 +41,16 @@ struct MenuBarView: View {
                     isDisabled: true
                 ) {}
                 .padding(.top, 8)
+
+                MenuBarActionButton(
+                    title: "Cancel Recording",
+                    systemImage: "xmark.circle",
+                    accentColor: .red
+                ) {
+                    Task {
+                        await viewModel.cancelRecording()
+                    }
+                }
             } else if isRecording {
                 RecordingButton(
                     duration: viewModel.formattedDuration,
@@ -58,6 +68,16 @@ struct MenuBarView: View {
                     accentColor: .orange
                 ) {
                     viewModel.togglePause()
+                }
+
+                MenuBarActionButton(
+                    title: "Cancel Recording",
+                    systemImage: "xmark.circle",
+                    accentColor: .red
+                ) {
+                    Task {
+                        await viewModel.cancelRecording()
+                    }
                 }
             } else {
                 MenuBarActionButton(

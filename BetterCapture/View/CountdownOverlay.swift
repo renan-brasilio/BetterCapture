@@ -6,8 +6,12 @@
 import AppKit
 import SwiftUI
 
-/// A borderless, click-through panel covering a single screen for the numeric countdown.
+/// A borderless panel covering a single screen for the numeric countdown. Accepts clicks
+/// and key presses (rather than being click-through) so any of them can skip it - it only
+/// covers the screen for a few seconds, unlike the Presenter Overlay prompt.
 private final class CountdownPanel: NSPanel {
+    var onSkip: (() -> Void)?
+
     init(screen: NSScreen) {
         super.init(
             contentRect: screen.frame,
@@ -21,8 +25,17 @@ private final class CountdownPanel: NSPanel {
         hasShadow = false
         level = .screenSaver
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        ignoresMouseEvents = true
         isReleasedWhenClosed = false
+    }
+
+    override var canBecomeKey: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        onSkip?()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        onSkip?()
     }
 }
 
@@ -69,6 +82,7 @@ final class CountdownOverlay {
     private var countdownPanel: CountdownPanel?
     private var promptPanel: PresenterOverlayPromptPanel?
     private var resumeContinuation: CheckedContinuation<Void, Never>?
+    private var countdownTask: Task<Void, Never>?
 
     /// Shows a small prompt asking the user to enable Presenter Overlay via Control
     /// Center, and suspends until they click Resume. Positioned so it never covers
@@ -109,7 +123,8 @@ final class CountdownOverlay {
         promptPanel = nil
     }
 
-    /// Shows the numeric countdown on the given screen and suspends until it finishes.
+    /// Shows the numeric countdown on the given screen and suspends until it finishes or
+    /// the user skips it (any key press or click).
     /// - Parameters:
     ///   - seconds: How many whole seconds to count down from.
     ///   - screen: The screen to display the countdown on.
@@ -119,16 +134,25 @@ final class CountdownOverlay {
         let state = CountdownState(secondsRemaining: seconds)
         let panel = CountdownPanel(screen: screen)
         panel.contentView = NSHostingView(rootView: CountdownOverlayView(state: state))
-        panel.orderFrontRegardless()
+
+        let task = Task { @MainActor in
+            for remaining in stride(from: seconds, through: 1, by: -1) {
+                if Task.isCancelled { return }
+                state.secondsRemaining = remaining
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+        countdownTask = task
+
+        panel.onSkip = { task.cancel() }
+        panel.makeKeyAndOrderFront(nil)
         countdownPanel = panel
 
-        for remaining in stride(from: seconds, through: 1, by: -1) {
-            state.secondsRemaining = remaining
-            try? await Task.sleep(for: .seconds(1))
-        }
+        await task.value
 
         countdownPanel?.orderOut(nil)
         countdownPanel = nil
+        countdownTask = nil
     }
 
     /// Dismisses whichever overlay is currently showing and releases anyone waiting on
@@ -138,6 +162,8 @@ final class CountdownOverlay {
         resumeContinuation = nil
         promptPanel?.orderOut(nil)
         promptPanel = nil
+        countdownTask?.cancel()
+        countdownTask = nil
         countdownPanel?.orderOut(nil)
         countdownPanel = nil
     }
@@ -174,6 +200,11 @@ private struct CountdownOverlayView: View {
                     .font(.system(size: 24, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.5), radius: 10)
+
+                Text("Press any key or click to skip")
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .shadow(color: .black.opacity(0.5), radius: 8)
             }
         }
         .ignoresSafeArea()
