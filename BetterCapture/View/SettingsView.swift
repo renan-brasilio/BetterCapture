@@ -259,6 +259,10 @@ struct GeneralSettingsView: View {
                 }
             }
 
+            Section("Recording") {
+                Toggle("3-Second Countdown Before Recording", isOn: $settings.countdownEnabled)
+            }
+
             Section("Software Updates") {
                 Toggle("Automatically check for updates", isOn: $automaticallyChecksForUpdates)
                     .onChange(of: automaticallyChecksForUpdates) { _, newValue in

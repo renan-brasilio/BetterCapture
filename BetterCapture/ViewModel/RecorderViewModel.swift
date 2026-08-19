@@ -19,6 +19,7 @@ final class RecorderViewModel {
 
     enum RecordingState {
         case idle
+        case countingDown
         case recording
         case stopping
     }
@@ -46,6 +47,11 @@ final class RecorderViewModel {
 
     var isRecording: Bool {
         state == .recording
+    }
+
+    /// Whether the pre-recording countdown is currently showing.
+    var isCountingDown: Bool {
+        state == .countingDown
     }
 
     /// Whether an active recording is currently paused. Only meaningful while `isRecording`.
@@ -97,6 +103,7 @@ final class RecorderViewModel {
     private let areaSelectionOverlay = AreaSelectionOverlay()
     private let selectionBorderFrame = SelectionBorderFrame()
     private let recordingOverlay = RecordingOverlayCoordinator()
+    private let countdownOverlay = CountdownOverlay()
 
     // MARK: - Initialization
 
@@ -253,6 +260,14 @@ final class RecorderViewModel {
 
         // Dismiss the recording overlay if it's still visible
         recordingOverlay.dismiss()
+
+        if settings.countdownEnabled {
+            state = .countingDown
+            let screen = selectedScreen ?? NSScreen.main ?? NSScreen.screens.first
+            if let screen {
+                await countdownOverlay.run(seconds: 3, on: screen)
+            }
+        }
 
         do {
             state = .recording

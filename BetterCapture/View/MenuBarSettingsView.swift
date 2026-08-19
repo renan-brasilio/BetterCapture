@@ -649,6 +649,23 @@ struct PresenterOverlaySettingsSection: View {
     }
 }
 
+// MARK: - Countdown Settings Section
+
+/// Toggle for the 3-second countdown shown before a recording starts
+struct CountdownSettingsSection: View {
+    @Bindable var settings: SettingsStore
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SectionDivider()
+
+            SectionHeader(title: "Recording")
+
+            MenuBarToggle(name: "3-Second Countdown", isOn: $settings.countdownEnabled)
+        }
+    }
+}
+
 // MARK: - Preview
 
 #Preview {
@@ -656,6 +673,7 @@ struct PresenterOverlaySettingsSection: View {
         VideoSettingsSection(settings: SettingsStore())
         PresenterOverlaySettingsSection(settings: SettingsStore(), cameraDeviceService: CameraDeviceService())
         AudioSettingsSection(settings: SettingsStore(), audioDeviceService: AudioDeviceService())
+        CountdownSettingsSection(settings: SettingsStore())
     }
     .frame(width: 320)
     .padding(.vertical, 8)

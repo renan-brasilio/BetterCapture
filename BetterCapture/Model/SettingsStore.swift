@@ -251,6 +251,22 @@ final class SettingsStore {
         self.defaults = defaults
     }
 
+    // MARK: - Recording Behavior Settings
+
+    /// Whether a 3-second countdown overlay is shown before a recording actually starts.
+    var countdownEnabled: Bool {
+        get {
+            access(keyPath: \.countdownEnabled)
+            guard defaults.object(forKey: "countdownEnabled") != nil else { return true }
+            return defaults.bool(forKey: "countdownEnabled")
+        }
+        set {
+            withMutation(keyPath: \.countdownEnabled) {
+                defaults.set(newValue, forKey: "countdownEnabled")
+            }
+        }
+    }
+
     // MARK: - Video Settings
 
     var frameRate: FrameRate {

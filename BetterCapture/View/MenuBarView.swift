@@ -16,11 +16,13 @@ struct MenuBarView: View {
     @State private var currentPreview: NSImage?
 
     private var isRecording: Bool { viewModel.isRecording }
+    /// Recording or about to be (countdown running) - used to disable selection/settings.
+    private var isBusy: Bool { viewModel.isRecording || viewModel.isCountingDown }
 
     var body: some View {
         VStack(spacing: 0) {
             // Permission status banner (only when idle)
-            if !isRecording,
+            if !isBusy,
                viewModel.permissionService.screenRecordingState != .granted ||
                 (viewModel.settings.captureMicrophone && viewModel.permissionService.microphoneState != .granted) {
                 PermissionStatusBanner(
@@ -30,7 +32,7 @@ struct MenuBarView: View {
                 MenuBarDivider()
             }
 
-            // Recording button (stop + timer) or Start button
+            // Recording button (stop + timer), countdown status, or Start button
             if isRecording {
                 RecordingButton(
                     duration: viewModel.formattedDuration,
@@ -49,6 +51,14 @@ struct MenuBarView: View {
                 ) {
                     viewModel.togglePause()
                 }
+            } else if viewModel.isCountingDown {
+                MenuBarActionButton(
+                    title: "Starting Recording...",
+                    systemImage: "timer",
+                    accentColor: .green,
+                    isDisabled: true
+                ) {}
+                .padding(.top, 8)
             } else {
                 MenuBarActionButton(
                     title: "Start Recording",
@@ -56,9 +66,9 @@ struct MenuBarView: View {
                     accentColor: .green,
                     isDisabled: !viewModel.canStartRecording
                 ) {
+                    dismiss()
                     Task {
                         await viewModel.startRecording()
-                        dismiss()
                     }
                 }
                 .padding(.top, 8)
@@ -68,7 +78,7 @@ struct MenuBarView: View {
 
             // Content Selection
             ContentSelectionButton(viewModel: viewModel) { dismiss() }
-                .disabled(isRecording)
+                .disabled(isBusy)
 
             // Preview thumbnail
             if viewModel.hasContentSelected {
@@ -107,7 +117,7 @@ struct MenuBarView: View {
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 12)
-                .disabled(isRecording)
+                .disabled(isBusy)
             }
 
             MenuBarDivider()
@@ -125,8 +135,10 @@ struct MenuBarView: View {
                     settings: viewModel.settings,
                     audioDeviceService: viewModel.audioDeviceService
                 )
+
+                CountdownSettingsSection(settings: viewModel.settings)
             }
-            .disabled(isRecording)
+            .disabled(isBusy)
 
             MenuBarDivider()
 
