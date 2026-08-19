@@ -5,6 +5,7 @@
 //  Created by Joshua Sattler on 29.01.26.
 //
 
+import AVFoundation
 import Foundation
 import ScreenCaptureKit
 import OSLog
@@ -258,7 +259,16 @@ final class CaptureEngine: NSObject {
         // Microphone settings - requires full TCC screen recording permission
         config.captureMicrophone = settings.captureMicrophone
         if let microphoneID = settings.selectedMicrophoneID {
-            config.microphoneCaptureDeviceID = microphoneID
+            // A device that has since been disconnected or renamed (common for Bluetooth
+            // devices, whose ID can change across reconnections) silently produces zero
+            // microphone samples for the whole recording - ScreenCaptureKit reports no
+            // error, it just never delivers anything. Fall back to the system default
+            // instead of pointing the stream at a device that no longer resolves.
+            if AVCaptureDevice(uniqueID: microphoneID) != nil {
+                config.microphoneCaptureDeviceID = microphoneID
+            } else {
+                logger.warning("Selected microphone \(microphoneID) is no longer available, falling back to system default")
+            }
         }
 
         // Presenter Overlay: always show the alert so the user knows overlay is available
