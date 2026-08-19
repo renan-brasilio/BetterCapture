@@ -33,13 +33,22 @@ struct MenuBarView: View {
             // Recording button (stop + timer) or Start button
             if isRecording {
                 RecordingButton(
-                    duration: viewModel.formattedDuration
+                    duration: viewModel.formattedDuration,
+                    isPaused: viewModel.isPaused
                 ) {
                     Task {
                         await viewModel.stopRecording()
                     }
                 }
                 .padding(.top, 8)
+
+                MenuBarActionButton(
+                    title: viewModel.isPaused ? "Resume Recording" : "Pause Recording",
+                    systemImage: viewModel.isPaused ? "play.circle" : "pause.circle",
+                    accentColor: .orange
+                ) {
+                    viewModel.togglePause()
+                }
             } else {
                 MenuBarActionButton(
                     title: "Start Recording",
@@ -200,6 +209,7 @@ struct MenuBarActionButton: View {
 /// A combined button that shows recording status and allows stopping
 struct RecordingButton: View {
     let duration: String
+    let isPaused: Bool
     let action: () -> Void
     @State private var isHovered = false
 
@@ -217,14 +227,14 @@ struct RecordingButton: View {
                         .foregroundStyle(.red.opacity(0.8))
                 }
 
-                Text("Stop Recording")
+                Text(isPaused ? "Paused" : "Stop Recording")
                     .font(.system(size: 13, weight: .semibold))
 
                 Spacer()
 
                 Text(duration)
                     .font(.system(size: 13, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(isPaused ? .orange : .secondary)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 4)

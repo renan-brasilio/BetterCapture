@@ -86,6 +86,15 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
     private var audioAppendAcceptCount = 0
     private var audioAppendDropCount = 0
 
+    /// Total presentation-time duration that has been paused so far, subtracted from
+    /// every sample's timestamp so a pause never leaves a frozen-frame gap or silent
+    /// hole in the output - the capture stream keeps running the whole time, only
+    /// appending stops.
+    private var totalPausedDuration: CMTime = .zero
+
+    /// Host time at which the current pause began, or `nil` if not paused.
+    private var pauseStartHostTime: CMTime?
+
     /// Upper bound on how many frames a single gap may be filled with, as a
     /// multiple of `gridFrameRate`. A capture that stalls for longer than this is
     /// left with a hole rather than blocking the capture queue.
@@ -242,6 +251,29 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
         logger.info("AssetWriter started writing")
     }
 
+    /// Pauses appending. The capture stream keeps delivering samples - they're simply
+    /// dropped until `resume()` - so no time is spent re-establishing the stream, camera,
+    /// or Presenter Overlay when resuming.
+    func pause() {
+        lock.withLockUnchecked {
+            guard pauseStartHostTime == nil else { return }
+            pauseStartHostTime = CMClockGetTime(CMClockGetHostTimeClock())
+            logger.info("AssetWriter paused")
+        }
+    }
+
+    /// Resumes appending after a `pause()`, subtracting the elapsed pause duration from
+    /// every later timestamp.
+    func resume() {
+        lock.withLockUnchecked {
+            guard let pauseStart = pauseStartHostTime else { return }
+            let now = CMClockGetTime(CMClockGetHostTimeClock())
+            totalPausedDuration = totalPausedDuration + (now - pauseStart)
+            pauseStartHostTime = nil
+            logger.info("AssetWriter resumed after \(self.totalPausedDuration.seconds)s total paused")
+        }
+    }
+
     // Track frame counts for debugging
     private var frameCount = 0
 
@@ -265,6 +297,7 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
         }
 
         lock.withLockUnchecked {
+            guard pauseStartHostTime == nil else { return }
             guard let assetWriter, assetWriter.status == .writing else { return }
 
             let presentationTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
@@ -377,6 +410,8 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
     /// Appends a system audio sample buffer - called synchronously from capture queue
     func appendAudioSample(_ sampleBuffer: CMSampleBuffer) {
         lock.withLockUnchecked {
+            guard pauseStartHostTime == nil else { return }
+
             guard let assetWriter,
                 assetWriter.status == .writing,
                 let audioInput,
@@ -410,6 +445,8 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
     /// Appends a microphone audio sample buffer
     func appendMicrophoneSample(_ sampleBuffer: CMSampleBuffer) {
         lock.withLockUnchecked {
+            guard pauseStartHostTime == nil else { return }
+
             guard let assetWriter,
                 assetWriter.status == .writing,
                 let microphoneInput,
@@ -445,8 +482,11 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
     }
 
     /// Converts a capture timestamp into an index on the constant frame rate grid.
+    ///
+    /// Subtracts `totalPausedDuration` so time spent paused is skipped entirely rather
+    /// than appearing as a gap the drain loop would otherwise fill with repeated frames.
     private func gridIndex(for presentationTime: CMTime) -> Int {
-        let elapsed = (presentationTime - sessionAnchor).seconds
+        let elapsed = (presentationTime - sessionAnchor - totalPausedDuration).seconds
         guard elapsed.isFinite else { return lastFrameIndex + 1 }
         return max(0, Int((elapsed * Double(gridFrameRate)).rounded()))
     }
@@ -487,16 +527,17 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
     }
 
     /// Returns a copy of `sampleBuffer` with its timestamps shifted so the session
-    /// anchor maps to zero.
+    /// anchor maps to zero, with any paused duration skipped as well.
     private func rebase(_ sampleBuffer: CMSampleBuffer) -> CMSampleBuffer? {
         guard var timings = try? sampleBuffer.sampleTimingInfos() else { return nil }
 
+        let anchor = sessionAnchor + totalPausedDuration
         for index in timings.indices {
             timings[index].presentationTimeStamp = CMTimeSubtract(
-                timings[index].presentationTimeStamp, sessionAnchor)
+                timings[index].presentationTimeStamp, anchor)
             if timings[index].decodeTimeStamp.isNumeric {
                 timings[index].decodeTimeStamp = CMTimeSubtract(
-                    timings[index].decodeTimeStamp, sessionAnchor)
+                    timings[index].decodeTimeStamp, anchor)
             }
         }
 
@@ -562,6 +603,8 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
         hasPaddedMicrophone = false
         audioAppendAcceptCount = 0
         audioAppendDropCount = 0
+        totalPausedDuration = .zero
+        pauseStartHostTime = nil
     }
 
     // MARK: - Finalization

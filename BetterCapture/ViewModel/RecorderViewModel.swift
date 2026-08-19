@@ -48,6 +48,9 @@ final class RecorderViewModel {
         state == .recording
     }
 
+    /// Whether an active recording is currently paused. Only meaningful while `isRecording`.
+    private(set) var isPaused = false
+
     var canStartRecording: Bool {
         selectedContentFilter != nil && state == .idle
     }
@@ -89,6 +92,7 @@ final class RecorderViewModel {
 
     private var recordingTimer: Timer?
     private var recordingStartTime: Date?
+    private var pauseStartDate: Date?
     private var videoSize: CGSize = .zero
     private let areaSelectionOverlay = AreaSelectionOverlay()
     private let selectionBorderFrame = SelectionBorderFrame()
@@ -325,6 +329,7 @@ final class RecorderViewModel {
         guard isRecording else { return }
 
         state = .stopping
+        isPaused = false
         stopTimer()
         selectionBorderFrame.dismiss()
 
@@ -370,6 +375,37 @@ final class RecorderViewModel {
         }
     }
 
+    /// Pauses or resumes the current recording.
+    ///
+    /// The capture stream, camera session, and Presenter Overlay all keep running the
+    /// whole time - only appending to the output file stops - so resuming is instant and
+    /// doesn't re-trigger the picker or any permission prompts.
+    func togglePause() {
+        guard isRecording else { return }
+
+        if isPaused {
+            isPaused = false
+            assetWriter.resume()
+
+            if let pauseStartDate, let recordingStartTime {
+                self.recordingStartTime = recordingStartTime.addingTimeInterval(
+                    Date().timeIntervalSince(pauseStartDate))
+            }
+            pauseStartDate = nil
+            scheduleDurationTimer()
+
+            logger.info("Recording resumed")
+        } else {
+            isPaused = true
+            assetWriter.pause()
+            pauseStartDate = Date()
+            recordingTimer?.invalidate()
+            recordingTimer = nil
+
+            logger.info("Recording paused")
+        }
+    }
+
     /// Resets the capture selection, removing the border frame and clearing state
     ///
     /// Covers both area and picker selections, so the capture engine's filter is cleared
@@ -403,7 +439,10 @@ final class RecorderViewModel {
     private func startTimer() {
         recordingStartTime = Date()
         recordingDuration = 0
+        scheduleDurationTimer()
+    }
 
+    private func scheduleDurationTimer() {
         recordingTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, let startTime = self.recordingStartTime else { return }
@@ -416,6 +455,7 @@ final class RecorderViewModel {
         recordingTimer?.invalidate()
         recordingTimer = nil
         recordingStartTime = nil
+        pauseStartDate = nil
     }
 
     // MARK: - Helper Methods
