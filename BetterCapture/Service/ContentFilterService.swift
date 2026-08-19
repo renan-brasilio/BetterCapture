@@ -15,7 +15,7 @@ import AVFoundation
 @MainActor
 final class ContentFilterService {
 
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "BetterCapture", category: "ContentFilterService")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Capster", category: "ContentFilterService")
 
     /// Checks if screen recording permission has been granted
     /// - Returns: true if permission is granted

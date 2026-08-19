@@ -582,13 +582,13 @@ final class SettingsStore {
 
     // MARK: - Output Settings
 
-    /// The default output directory (Movies/BetterCapture)
+    /// The default output directory (Movies/Capster)
     var defaultOutputDirectory: URL {
-        URL.homeDirectory.appending(path: "Movies/BetterCapture")
+        URL.homeDirectory.appending(path: "Movies/Capster")
     }
 
     /// Default filename template - matches the format recordings used before this setting existed.
-    static let defaultFilenameTemplate = "BetterCapture_{date}-{time}"
+    static let defaultFilenameTemplate = "Capster_{date}-{time}"
 
     /// Template used to name new recordings. Supports `{date}` (yyyy-MM-dd) and `{time}`
     /// (HH.mm.ss) placeholders; the container's file extension is appended automatically.
@@ -798,6 +798,6 @@ final class SettingsStore {
         let invalidCharacters = CharacterSet(charactersIn: "/\\:")
         let sanitized = raw.components(separatedBy: invalidCharacters).joined(separator: "-")
         let trimmed = sanitized.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "BetterCapture" : trimmed
+        return trimmed.isEmpty ? "Capster" : trimmed
     }
 }

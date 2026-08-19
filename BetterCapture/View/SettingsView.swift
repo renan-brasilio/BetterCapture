@@ -9,7 +9,7 @@ import AppKit
 import KeyboardShortcuts
 import SwiftUI
 
-/// The settings window for BetterCapture
+/// The settings window for Capster
 struct SettingsView: View {
     @Bindable var settings: SettingsStore
     var updaterService: UpdaterService
@@ -51,7 +51,7 @@ struct ShortcutsSettingsView: View {
             }
 
             Section {
-                Text("Shortcuts work globally, even when BetterCapture is not focused.")
+                Text("Shortcuts work globally, even when Capster is not focused.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -153,7 +153,7 @@ struct VideoSettingsView: View {
                 Toggle("Show Wallpaper", isOn: $settings.showWallpaper)
                 Toggle("Show Menu Bar", isOn: $settings.showMenuBar)
                 Toggle("Show Dock", isOn: $settings.showDock)
-                Toggle("Show BetterCapture", isOn: $settings.showBetterCapture)
+                Toggle("Show Capster", isOn: $settings.showBetterCapture)
             }
 
             Section("Window Capture") {
@@ -328,12 +328,18 @@ struct AboutSection: View {
         Section("About") {
             LabeledContent("Version", value: "v\(appVersion) (\(gitSHA))")
 
-            LabeledContent("Website") {
-                Link("jsattler.github.io/BetterCapture", destination: URL(string: "https://jsattler.github.io/BetterCapture")!)
+            LabeledContent("Source Code") {
+                Link(
+                    "github.com/renan-brasilio/BetterCapture",
+                    destination: URL(string: "https://github.com/renan-brasilio/BetterCapture")!
+                )
             }
 
-            LabeledContent("Source Code") {
-                Link("github.com/jsattler/BetterCapture", destination: URL(string: "https://github.com/jsattler/BetterCapture")!)
+            LabeledContent("Fork of") {
+                Link(
+                    "BetterCapture by Joshua Sattler",
+                    destination: URL(string: "https://github.com/jsattler/BetterCapture")!
+                )
             }
         }
     }

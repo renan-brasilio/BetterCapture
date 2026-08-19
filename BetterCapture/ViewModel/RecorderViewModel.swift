@@ -93,7 +93,7 @@ final class RecorderViewModel {
     private let assetWriter: AssetWriter
     private let cameraSession = CameraSession()
 
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "BetterCapture", category: "RecorderViewModel")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Capster", category: "RecorderViewModel")
 
     // MARK: - Private Properties
 

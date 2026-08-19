@@ -19,7 +19,7 @@ final class CameraSession {
     private let queue = DispatchQueue(label: "com.bettercapture.cameraSession")
 
     private let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "BetterCapture",
+        subsystem: Bundle.main.bundleIdentifier ?? "Capster",
         category: "CameraSession"
     )
 

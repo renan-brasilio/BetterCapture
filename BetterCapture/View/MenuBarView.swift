@@ -8,7 +8,7 @@
 import SwiftUI
 import ScreenCaptureKit
 
-/// The main menu bar interface for BetterCapture
+/// The main menu bar interface for Capster
 struct MenuBarView: View {
     @Bindable var viewModel: RecorderViewModel
     @Environment(\.openSettings) private var openSettings

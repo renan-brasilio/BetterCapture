@@ -46,7 +46,7 @@ final class CaptureEngine: NSObject {
     private let picker = SCContentSharingPicker.shared
     private let contentFilterService = ContentFilterService()
 
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "BetterCapture", category: "CaptureEngine")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Capster", category: "CaptureEngine")
 
     // Queues for sample buffer handling
     private let videoSampleQueue = DispatchQueue(label: "com.bettercapture.videoSampleQueue", qos: .userInteractive)

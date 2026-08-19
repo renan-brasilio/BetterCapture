@@ -42,7 +42,7 @@ struct BetterCaptureApp: App {
     // MARK: - URL Scheme
 
     private func handleURL(_ url: URL) {
-        guard url.scheme == "bettercapture" else { return }
+        guard url.scheme == "capster" else { return }
 
         switch url.host {
         case "toggle", "toggle-copy":
@@ -110,7 +110,11 @@ struct MenuBarLabel: View {
                 Image(nsImage: image)
             }
         } else {
-            Image(systemName: "record.circle")
+            Image("MenuBarIcon")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 18, height: 18)
         }
     }
 

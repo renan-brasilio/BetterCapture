@@ -5,13 +5,13 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>BetterCapture needs access to your microphone to record audio alongside screen captures.</string>
+	<string>Capster needs access to your microphone to record audio alongside screen captures.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>BetterCapture needs access to your camera to enable Presenter Overlay during screen recordings.</string>
+	<string>Capster needs access to your camera to enable Presenter Overlay during screen recordings.</string>
 	<key>NSScreenCaptureUsageDescription</key>
-	<string>BetterCapture needs access to screen recording to capture your screen content.</string>
+	<string>Capster needs access to screen recording to capture your screen content.</string>
 	<key>SUFeedURL</key>
-	<string>https://github.com/jsattler/BetterCapture/releases/latest/download/appcast.xml</string>
+	<string>https://github.com/renan-brasilio/BetterCapture/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>SPARKLE_PUBLIC_KEY</string>
 	<key>SUEnableInstallerLauncherService</key>
@@ -20,10 +20,10 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.sattlerjoshua.BetterCapture</string>
+			<string>com.renanfamous.Capster</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>bettercapture</string>
+				<string>capster</string>
 			</array>
 		</dict>
 	</array>

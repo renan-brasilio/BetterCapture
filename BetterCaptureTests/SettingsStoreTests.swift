@@ -312,7 +312,7 @@ struct SettingsStoreTests {
         let store = makeStore()
         let filename = store.generateFilename()
 
-        #expect(filename.hasPrefix("BetterCapture_"))
+        #expect(filename.hasPrefix("Capster_"))
         #expect(filename.hasSuffix(".\(store.containerFormat.fileExtension)"))
     }
 
@@ -328,9 +328,9 @@ struct SettingsStoreTests {
 
     // MARK: - Output Directory
 
-    @Test func defaultOutputDirectoryIsMoviesBetterCapture() {
+    @Test func defaultOutputDirectoryIsMoviesCapster() {
         let store = makeStore()
-        let expected = URL.homeDirectory.appending(path: "Movies/BetterCapture")
+        let expected = URL.homeDirectory.appending(path: "Movies/Capster")
         #expect(store.defaultOutputDirectory == expected)
     }
 

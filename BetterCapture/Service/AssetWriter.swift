@@ -33,7 +33,7 @@ final class AssetWriter: CaptureEngineSampleBufferDelegate, @unchecked Sendable 
     private(set) var outputURL: URL?
 
     private let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "BetterCapture", category: "AssetWriter")
+        subsystem: Bundle.main.bundleIdentifier ?? "Capster", category: "AssetWriter")
 
     // Track if we've received the first sample
     private var hasStartedSession = false

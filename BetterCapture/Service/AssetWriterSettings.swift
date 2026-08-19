@@ -13,7 +13,7 @@ import VideoToolbox
 enum AssetWriterSettings {
 
     private static let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "BetterCapture", category: "AssetWriter")
+        subsystem: Bundle.main.bundleIdentifier ?? "Capster", category: "AssetWriter")
 
     /// Builds the video output settings for the selected codec, quality and dynamic range.
     static func video(from settings: SettingsStore, size: CGSize) -> [String: Any] {

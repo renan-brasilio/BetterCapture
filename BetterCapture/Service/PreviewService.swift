@@ -33,7 +33,7 @@ final class PreviewService: NSObject {
     private let previewQueue = DispatchQueue(label: "com.bettercapture.previewQueue", qos: .userInteractive)
 
     private let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "BetterCapture",
+        subsystem: Bundle.main.bundleIdentifier ?? "Capster",
         category: "PreviewService"
     )
 

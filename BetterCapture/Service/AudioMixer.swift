@@ -44,7 +44,7 @@ final class AudioMixer: @unchecked Sendable {
 
     private(set) var isRunning = false
 
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "BetterCapture", category: "AudioMixer")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Capster", category: "AudioMixer")
 
     init() {
         engine.attach(systemAudioPlayer)

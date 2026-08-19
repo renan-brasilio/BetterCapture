@@ -56,7 +56,7 @@ final class AreaSelectionOverlay {
     private var continuation: CheckedContinuation<AreaSelectionResult?, Never>?
 
     private let logger = Logger(
-        subsystem: Bundle.main.bundleIdentifier ?? "BetterCapture",
+        subsystem: Bundle.main.bundleIdentifier ?? "Capster",
         category: "AreaSelectionOverlay"
     )
 
