@@ -1,9 +1,9 @@
 included:
-  - BetterCapture
-  - BetterCaptureTests
+  - Capster
+  - CapsterTests
 
 excluded:
-  - BetterCapture.xcodeproj
+  - Capster.xcodeproj
 
 opt_in_rules:
   - array_init

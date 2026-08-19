@@ -53,13 +53,13 @@ No prebuilt releases are published for this fork yet, so for now it has to be bu
 1. **Install Xcode** from the Mac App Store if you don't already have it, then open it once and let it finish any first-time setup.
 
 2. **Download this project**. Either:
-   - Go to [this repo's GitHub page](https://github.com/renan-brasilio/BetterCapture), click the green **Code** button → **Download ZIP**, then double-click the downloaded file to unzip it, or
+   - Go to [this repo's GitHub page](https://github.com/renan-brasilio/Capster), click the green **Code** button → **Download ZIP**, then double-click the downloaded file to unzip it, or
    - If you're comfortable with Terminal:
      ```bash
-     git clone https://github.com/renan-brasilio/BetterCapture.git
+     git clone https://github.com/renan-brasilio/Capster.git
      ```
 
-3. **Open the project**: inside the downloaded/unzipped folder, double-click `BetterCapture.xcodeproj`. This opens Xcode.
+3. **Open the project**: inside the downloaded/unzipped folder, double-click `Capster.xcodeproj`. This opens Xcode.
 
 4. **Sign in with your Apple ID in Xcode** (one-time only, needed to run any app you build yourself):
    - In the menu bar at the top of the screen: **Xcode → Settings…** (or press ⌘,)
@@ -68,8 +68,8 @@ No prebuilt releases are published for this fork yet, so for now it has to be bu
    - This is completely free - you don't need to pay Apple anything to build and run the app on your own Mac
 
 5. **Point the project at your account**:
-   - In the left sidebar (the file list), click the blue **BetterCapture** project icon at the very top
-   - In the main panel, select the **BetterCapture** target (under "TARGETS")
+   - In the left sidebar (the file list), click the blue **Capster** project icon at the very top
+   - In the main panel, select the **Capster** target (under "TARGETS")
    - Click the **Signing & Capabilities** tab
    - Under **Team**, open the dropdown and choose **[Your Name] (Personal Team)**
 
@@ -85,7 +85,7 @@ Running via ⌘R launches a temporary build that disappears if Xcode cleans up a
 
 1. After a successful Run, go to Xcode's **Product** menu → **Show Build Folder in Finder**
 2. Open the `Products` folder, then `Debug`
-3. Drag `BetterCapture.app` into your `/Applications` folder (feel free to rename it to `Capster.app` - the app itself already displays as "Capster" regardless of the file's name)
+3. Drag `Capster.app` into your `/Applications` folder
 
 From then on, launch it directly from Applications or Spotlight without needing to open Xcode again, unless a new code change needs building.
 

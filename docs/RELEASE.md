@@ -1,10 +1,10 @@
 # Release Process
 
-This document outlines the steps to release a new version of BetterCapture.
+This document outlines the steps to release a new version of Capster.
 
 ## Versioning Scheme
 
-BetterCapture uses [Calendar Versioning (CalVer)](https://calver.org/) with the format `YYYY.MINOR.PATCH`.
+Capster uses [Calendar Versioning (CalVer)](https://calver.org/) with the format `YYYY.MINOR.PATCH`.
 
 - `YYYY`: The current year (e.g., 2026).
 - `MINOR`: Incremental release number within the year.
@@ -27,7 +27,7 @@ Once the release is published, a GitHub Action will automatically:
 
 - Build the application.
 - Sign and notarize the app.
-- Create a DMG file: `BetterCapture-[version]-arm64.dmg`.
+- Create a DMG file: `Capster-[version]-arm64.dmg`.
 - Update the `appcast.xml` for Sparkle updates.
 - Upload the DMG and `appcast.xml` back to the GitHub Release.
 
@@ -40,6 +40,6 @@ After the release is complete and the DMG is attached to the GitHub Release, you
    - **Version:** Update to the new release version.
    - **URL:** Update the download URL to point to the new DMG.
    - **SHA256:** Calculate the SHA256 of the new DMG file.
-     - You can download the DMG and run: `shasum -a 256 BetterCapture-[version]-arm64.dmg`
+     - You can download the DMG and run: `shasum -a 256 Capster-[version]-arm64.dmg`
      - Or get it from the CI logs if available.
 3. Commit and push the changes to the homebrew-tap repository.
