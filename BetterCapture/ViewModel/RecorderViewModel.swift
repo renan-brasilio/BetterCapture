@@ -19,7 +19,6 @@ final class RecorderViewModel {
 
     enum RecordingState {
         case idle
-        case countingDown
         case recording
         case stopping
     }
@@ -49,13 +48,15 @@ final class RecorderViewModel {
         state == .recording
     }
 
-    /// Whether the pre-recording countdown is currently showing.
-    var isCountingDown: Bool {
-        state == .countingDown
-    }
-
     /// Whether an active recording is currently paused. Only meaningful while `isRecording`.
     private(set) var isPaused = false
+
+    /// True during the brief window right after capture has genuinely started but before
+    /// real content is being written - while waiting for Presenter Overlay to be enabled
+    /// manually and/or showing the countdown. Recording is internally paused throughout.
+    /// Kept separate from `isPaused` so the pause/resume UI doesn't show (or accept taps)
+    /// during this bootstrap window.
+    private(set) var isPreparing = false
 
     var canStartRecording: Bool {
         selectedContentFilter != nil && state == .idle
@@ -261,14 +262,6 @@ final class RecorderViewModel {
         // Dismiss the recording overlay if it's still visible
         recordingOverlay.dismiss()
 
-        if settings.countdownEnabled {
-            state = .countingDown
-            let screen = selectedScreen ?? NSScreen.main ?? NSScreen.screens.first
-            if let screen {
-                await countdownOverlay.run(seconds: 3, on: screen)
-            }
-        }
-
         do {
             state = .recording
             lastError = nil
@@ -312,6 +305,29 @@ final class RecorderViewModel {
             // Start timer
             startTimer()
 
+            // The screen-sharing menu bar icon only offers Presenter Overlay once a share
+            // is genuinely live, so this has to wait until capture has actually started -
+            // pause immediately (nothing meaningful is written during this window, same
+            // mechanism as the manual Pause button) while the user enables it, then resume
+            // for real once they're ready.
+            if settings.presenterOverlayEnabled || settings.countdownEnabled {
+                isPreparing = true
+                pauseInternal()
+
+                let screen = selectedScreen ?? NSScreen.main ?? NSScreen.screens.first
+
+                if settings.presenterOverlayEnabled, let screen {
+                    await countdownOverlay.waitForPresenterOverlayEnable(on: screen)
+                }
+
+                if settings.countdownEnabled, let screen {
+                    await countdownOverlay.runCountdown(seconds: 3, on: screen)
+                }
+
+                resumeInternal()
+                isPreparing = false
+            }
+
             logger.info("Recording started")
 
         } catch {
@@ -345,6 +361,11 @@ final class RecorderViewModel {
 
         state = .stopping
         isPaused = false
+        // If still waiting on Presenter Overlay / the countdown, release that wait so
+        // `startRecording()` doesn't stay suspended after the recording it belongs to
+        // has been torn down.
+        countdownOverlay.cancel()
+        isPreparing = false
         stopTimer()
         selectionBorderFrame.dismiss()
 
@@ -396,29 +417,39 @@ final class RecorderViewModel {
     /// whole time - only appending to the output file stops - so resuming is instant and
     /// doesn't re-trigger the picker or any permission prompts.
     func togglePause() {
-        guard isRecording else { return }
+        guard isRecording, !isPreparing else { return }
 
         if isPaused {
             isPaused = false
-            assetWriter.resume()
-
-            if let pauseStartDate, let recordingStartTime {
-                self.recordingStartTime = recordingStartTime.addingTimeInterval(
-                    Date().timeIntervalSince(pauseStartDate))
-            }
-            pauseStartDate = nil
-            scheduleDurationTimer()
-
+            resumeInternal()
             logger.info("Recording resumed")
         } else {
             isPaused = true
-            assetWriter.pause()
-            pauseStartDate = Date()
-            recordingTimer?.invalidate()
-            recordingTimer = nil
-
+            pauseInternal()
             logger.info("Recording paused")
         }
+    }
+
+    /// Pauses appending without touching `isPaused` - shared by `togglePause()` and the
+    /// Presenter Overlay / countdown bootstrap window in `startRecording()`.
+    private func pauseInternal() {
+        assetWriter.pause()
+        pauseStartDate = Date()
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+    }
+
+    /// Resumes appending, shifting `recordingStartTime` forward by however long was
+    /// paused so the displayed duration continues smoothly.
+    private func resumeInternal() {
+        assetWriter.resume()
+
+        if let pauseStartDate, let recordingStartTime {
+            self.recordingStartTime = recordingStartTime.addingTimeInterval(
+                Date().timeIntervalSince(pauseStartDate))
+        }
+        pauseStartDate = nil
+        scheduleDurationTimer()
     }
 
     /// Resets the capture selection, removing the border frame and clearing state

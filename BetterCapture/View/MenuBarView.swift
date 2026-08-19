@@ -16,8 +16,8 @@ struct MenuBarView: View {
     @State private var currentPreview: NSImage?
 
     private var isRecording: Bool { viewModel.isRecording }
-    /// Recording or about to be (countdown running) - used to disable selection/settings.
-    private var isBusy: Bool { viewModel.isRecording || viewModel.isCountingDown }
+    /// Recording (including the pre-recording bootstrap window) - used to disable selection/settings.
+    private var isBusy: Bool { viewModel.isRecording }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,8 +32,16 @@ struct MenuBarView: View {
                 MenuBarDivider()
             }
 
-            // Recording button (stop + timer), countdown status, or Start button
-            if isRecording {
+            // Recording button (stop + timer), starting status, or Start button
+            if isRecording && viewModel.isPreparing {
+                MenuBarActionButton(
+                    title: "Starting Recording...",
+                    systemImage: "timer",
+                    accentColor: .green,
+                    isDisabled: true
+                ) {}
+                .padding(.top, 8)
+            } else if isRecording {
                 RecordingButton(
                     duration: viewModel.formattedDuration,
                     isPaused: viewModel.isPaused
@@ -51,14 +59,6 @@ struct MenuBarView: View {
                 ) {
                     viewModel.togglePause()
                 }
-            } else if viewModel.isCountingDown {
-                MenuBarActionButton(
-                    title: "Starting Recording...",
-                    systemImage: "timer",
-                    accentColor: .green,
-                    isDisabled: true
-                ) {}
-                .padding(.top, 8)
             } else {
                 MenuBarActionButton(
                     title: "Start Recording",

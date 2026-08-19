@@ -6,7 +6,7 @@
 import AppKit
 import SwiftUI
 
-/// A borderless, click-through panel covering a single screen for the countdown overlay.
+/// A borderless, click-through panel covering a single screen for the numeric countdown.
 private final class CountdownPanel: NSPanel {
     init(screen: NSScreen) {
         super.init(
@@ -26,6 +26,30 @@ private final class CountdownPanel: NSPanel {
     }
 }
 
+/// A small, interactive floating panel for the "enable Presenter Overlay manually" prompt.
+/// Unlike `CountdownPanel`, this must accept clicks for its Resume button - and must NOT
+/// cover the whole screen, since the user needs to be able to click Control Center
+/// (top-right of the menu bar) while it's showing.
+private final class PresenterOverlayPromptPanel: NSPanel {
+    init(contentRect: CGRect) {
+        super.init(
+            contentRect: contentRect,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        level = .screenSaver
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        isReleasedWhenClosed = false
+    }
+
+    override var canBecomeKey: Bool { true }
+}
+
 /// Drives the number shown by the countdown overlay.
 @MainActor
 @Observable
@@ -36,42 +60,100 @@ final class CountdownState {
     }
 }
 
-/// Shows a full-screen countdown before a recording starts, so the user has a moment to
-/// get ready before the capture actually begins.
+/// Shows the pre-recording flow: an optional prompt asking the user to manually enable
+/// Presenter Overlay (macOS gives apps no API to do this themselves), followed by an
+/// optional full-screen numeric countdown, both before the capture actually begins.
 @MainActor
 final class CountdownOverlay {
 
-    private var panel: CountdownPanel?
+    private var countdownPanel: CountdownPanel?
+    private var promptPanel: PresenterOverlayPromptPanel?
+    private var resumeContinuation: CheckedContinuation<Void, Never>?
 
-    /// Shows the countdown on the given screen and suspends until it finishes.
+    /// Shows a small prompt asking the user to enable Presenter Overlay via Control
+    /// Center, and suspends until they click Resume. Positioned so it never covers
+    /// Control Center itself.
+    func waitForPresenterOverlayEnable(on screen: NSScreen) async {
+        let width: CGFloat = 300
+        let height: CGFloat = 200
+        let origin = promptOrigin(width: width, height: height, screen: screen)
+        let contentRect = CGRect(x: origin.x, y: origin.y, width: width, height: height)
+
+        let panel = PresenterOverlayPromptPanel(contentRect: contentRect)
+
+        let visualEffect = NSVisualEffectView(frame: .init(origin: .zero, size: contentRect.size))
+        visualEffect.material = .menu
+        visualEffect.blendingMode = .behindWindow
+        visualEffect.state = .active
+        visualEffect.wantsLayer = true
+        visualEffect.layer?.cornerRadius = 14
+        visualEffect.layer?.masksToBounds = true
+
+        let hostingView = NSHostingView(rootView: PresenterOverlayPromptView { [weak self] in
+            self?.resumeContinuation?.resume()
+            self?.resumeContinuation = nil
+        })
+        hostingView.frame = visualEffect.bounds
+        hostingView.autoresizingMask = [.width, .height]
+        visualEffect.addSubview(hostingView)
+        panel.contentView = visualEffect
+
+        panel.makeKeyAndOrderFront(nil)
+        promptPanel = panel
+
+        await withCheckedContinuation { continuation in
+            resumeContinuation = continuation
+        }
+
+        panel.orderOut(nil)
+        promptPanel = nil
+    }
+
+    /// Shows the numeric countdown on the given screen and suspends until it finishes.
     /// - Parameters:
     ///   - seconds: How many whole seconds to count down from.
     ///   - screen: The screen to display the countdown on.
-    func run(seconds: Int, on screen: NSScreen) async {
+    func runCountdown(seconds: Int, on screen: NSScreen) async {
         guard seconds > 0 else { return }
 
         let state = CountdownState(secondsRemaining: seconds)
         let panel = CountdownPanel(screen: screen)
         panel.contentView = NSHostingView(rootView: CountdownOverlayView(state: state))
         panel.orderFrontRegardless()
-        self.panel = panel
+        countdownPanel = panel
 
         for remaining in stride(from: seconds, through: 1, by: -1) {
             state.secondsRemaining = remaining
             try? await Task.sleep(for: .seconds(1))
         }
 
-        dismiss()
+        countdownPanel?.orderOut(nil)
+        countdownPanel = nil
     }
 
-    /// Dismisses the countdown early.
-    func dismiss() {
-        panel?.orderOut(nil)
-        panel = nil
+    /// Dismisses whichever overlay is currently showing and releases anyone waiting on
+    /// `waitForPresenterOverlayEnable`.
+    func cancel() {
+        resumeContinuation?.resume()
+        resumeContinuation = nil
+        promptPanel?.orderOut(nil)
+        promptPanel = nil
+        countdownPanel?.orderOut(nil)
+        countdownPanel = nil
+    }
+
+    /// Places the prompt near the top-center of the screen, clear of Control Center in
+    /// the top-right corner of the menu bar.
+    private func promptOrigin(width: CGFloat, height: CGFloat, screen: NSScreen) -> CGPoint {
+        let menuBarThickness = NSStatusBar.system.thickness
+        let gap: CGFloat = 16
+        let originX = screen.frame.midX - width / 2
+        let originY = screen.frame.maxY - menuBarThickness - height - gap
+        return CGPoint(x: originX, y: originY)
     }
 }
 
-// MARK: - View
+// MARK: - Countdown View
 
 private struct CountdownOverlayView: View {
     let state: CountdownState
@@ -95,5 +177,35 @@ private struct CountdownOverlayView: View {
             }
         }
         .ignoresSafeArea()
+    }
+}
+
+// MARK: - Presenter Overlay Prompt View
+
+private struct PresenterOverlayPromptView: View {
+    let onResume: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "person.crop.rectangle.badge.exclamationmark")
+                .font(.system(size: 32))
+                .foregroundStyle(.orange)
+
+            Text("Enable Presenter Overlay")
+                .font(.system(size: 16, weight: .bold))
+
+            Text("macOS doesn't allow apps to turn this on automatically. Open Control Center, enable Presenter Overlay, then click Resume.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button("Resume") {
+                onResume()
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(20)
+        .frame(width: 300)
     }
 }
