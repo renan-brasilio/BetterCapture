@@ -15,11 +15,12 @@ import Foundation
 @MainActor
 struct SettingsStoreTests {
 
-    /// Creates a SettingsStore backed by a fresh, empty UserDefaults suite.
+    /// Creates a SettingsStore backed by a fresh, empty UserDefaults suite and an
+    /// in-memory Keychain stub, so tests never touch the real Keychain.
     private func makeStore() -> SettingsStore {
         let suiteName = "com.renanfamous.CapsterTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
-        return SettingsStore(defaults: defaults)
+        return SettingsStore(defaults: defaults, keychain: InMemoryKeychainStub())
     }
 
     // MARK: - Default Values
@@ -429,4 +430,68 @@ struct SettingsStoreTests {
         #expect(store.captureAlphaChannel == false)
         #expect(store.audioCodec == .aac)
     }
+
+    // MARK: - Automation Settings
+
+    @Test func defaultHandBrakeTranscodeIsDisabled() {
+        let store = makeStore()
+        #expect(store.handBrakeTranscodeEnabled == false)
+    }
+
+    @Test func defaultChorusUploadIsDisabled() {
+        let store = makeStore()
+        #expect(store.chorusUploadEnabled == false)
+    }
+
+    @Test func defaultHandBrakePresetIsFast1080p30() {
+        let store = makeStore()
+        #expect(store.handBrakePreset == .fast1080p30)
+    }
+
+    @Test func defaultDeleteOriginalAfterTranscodeIsDisabled() {
+        let store = makeStore()
+        #expect(store.deleteOriginalAfterTranscode == false)
+    }
+
+    @Test func defaultHasNoHandBrakeCLI() {
+        let store = makeStore()
+        #expect(store.hasHandBrakeCLI == false)
+        #expect(store.handBrakeCLIURL == nil)
+    }
+
+    @Test func handBrakeCLIBookmarkRoundTrips() throws {
+        let store = makeStore()
+        let tempURL = FileManager.default.temporaryDirectory.appending(path: "FakeHandBrakeCLI-\(UUID().uuidString)")
+        FileManager.default.createFile(atPath: tempURL.path(percentEncoded: false), contents: Data())
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        store.setHandBrakeCLIURL(tempURL)
+        #expect(store.hasHandBrakeCLI == true)
+        #expect(store.handBrakeCLIURL?.resolvingSymlinksInPath() == tempURL.resolvingSymlinksInPath())
+
+        store.resetHandBrakeCLI()
+        #expect(store.hasHandBrakeCLI == false)
+    }
+
+    @Test func chorusAPITokenRoundTripsThroughKeychainStub() {
+        let store = makeStore()
+        #expect(store.chorusAPIToken == nil)
+
+        store.chorusAPIToken = "test-token-123"
+        #expect(store.chorusAPIToken == "test-token-123")
+
+        store.chorusAPIToken = nil
+        #expect(store.chorusAPIToken == nil)
+    }
+}
+
+/// In-memory `KeychainServing` stub so tests never touch the real Keychain.
+final class InMemoryKeychainStub: KeychainServing {
+    private var storage: [String: String] = [:]
+
+    func readString(key: String) -> String? { storage[key] }
+
+    func saveString(_ value: String, key: String) throws { storage[key] = value }
+
+    func deleteString(key: String) throws { storage.removeValue(forKey: key) }
 }

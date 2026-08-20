@@ -89,9 +89,11 @@ final class RecorderViewModel {
     let previewService: PreviewService
     let notificationService: NotificationService
     let permissionService: PermissionService
+    let postProcessing: PostProcessingCoordinator
     private let captureEngine: CaptureEngine
     private let assetWriter: AssetWriter
     private let cameraSession = CameraSession()
+    private let postProcessingPanel = PostProcessingPanelCoordinator()
 
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Capster", category: "RecorderViewModel")
 
@@ -115,6 +117,7 @@ final class RecorderViewModel {
         self.previewService = PreviewService()
         self.notificationService = NotificationService(settings: settings)
         self.permissionService = PermissionService()
+        self.postProcessing = PostProcessingCoordinator(settings: settings, notificationService: notificationService)
         self.captureEngine = CaptureEngine()
         self.assetWriter = AssetWriter()
 
@@ -397,6 +400,11 @@ final class RecorderViewModel {
 
             if copyToClipboard {
                 copyFileToClipboard(outputURL)
+            }
+
+            if settings.handBrakeTranscodeEnabled || settings.chorusUploadEnabled {
+                postProcessing.start(recordingURL: outputURL)
+                postProcessingPanel.show(coordinator: postProcessing)
             }
 
             settings.stopAccessingOutputDirectory()

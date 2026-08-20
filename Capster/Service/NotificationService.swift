@@ -21,10 +21,15 @@ final class NotificationService: NSObject {
         static let categoryRecordingSaved = "RECORDING_SAVED"
         static let categoryRecordingFailed = "RECORDING_FAILED"
         static let actionShowInFinder = "SHOW_IN_FINDER"
+        static let categoryPostProcessing = "POST_PROCESSING"
+        static let categoryPostProcessingFailed = "POST_PROCESSING_FAILED"
+        static let categoryChorusUploadCompleted = "CHORUS_UPLOAD_COMPLETED"
+        static let actionOpenChorusLink = "OPEN_CHORUS_LINK"
     }
 
     private enum UserInfoKey {
         static let folderURL = "folderURL"
+        static let chorusLink = "chorusLink"
     }
 
     // MARK: - Properties
@@ -73,9 +78,38 @@ final class NotificationService: NSObject {
             intentIdentifiers: []
         )
 
+        // Categories for the post-processing pipeline (transcode/upload started/completed)
+        let postProcessingCategory = UNNotificationCategory(
+            identifier: NotificationIdentifier.categoryPostProcessing,
+            actions: [],
+            intentIdentifiers: []
+        )
+
+        let postProcessingFailedCategory = UNNotificationCategory(
+            identifier: NotificationIdentifier.categoryPostProcessingFailed,
+            actions: [],
+            intentIdentifiers: []
+        )
+
+        // Action to open the Chorus link for a completed upload
+        let openChorusLinkAction = UNNotificationAction(
+            identifier: NotificationIdentifier.actionOpenChorusLink,
+            title: "Open Link",
+            options: [.foreground]
+        )
+
+        let chorusUploadCompletedCategory = UNNotificationCategory(
+            identifier: NotificationIdentifier.categoryChorusUploadCompleted,
+            actions: [openChorusLinkAction],
+            intentIdentifiers: []
+        )
+
         UNUserNotificationCenter.current().setNotificationCategories([
             recordingSavedCategory,
-            recordingFailedCategory
+            recordingFailedCategory,
+            postProcessingCategory,
+            postProcessingFailedCategory,
+            chorusUploadCompletedCategory
         ])
     }
 
@@ -154,6 +188,79 @@ final class NotificationService: NSObject {
         )
     }
 
+    // MARK: - Post-Processing Notifications
+
+    func sendTranscodeStartedNotification(fileURL: URL) {
+        send(
+            title: "Transcoding Recording",
+            body: "Transcoding \(fileURL.lastPathComponent) with HandBrake…",
+            category: NotificationIdentifier.categoryPostProcessing
+        )
+    }
+
+    func sendTranscodeCompletedNotification(fileURL: URL) {
+        send(
+            title: "Transcode Complete",
+            body: "\(fileURL.lastPathComponent) has been transcoded",
+            category: NotificationIdentifier.categoryPostProcessing,
+            folderURL: fileURL.deletingLastPathComponent()
+        )
+    }
+
+    func sendTranscodeFailedNotification(error: Error) {
+        send(
+            title: "Transcode Failed",
+            body: error.localizedDescription,
+            category: NotificationIdentifier.categoryPostProcessingFailed
+        )
+    }
+
+    func sendUploadStartedNotification(fileURL: URL) {
+        send(
+            title: "Uploading to Chorus",
+            body: "Uploading \(fileURL.lastPathComponent)…",
+            category: NotificationIdentifier.categoryPostProcessing
+        )
+    }
+
+    /// Sends a notification for a completed Chorus upload. If the (unverified) API
+    /// response didn't include a link, falls back to a plain completion notification.
+    func sendUploadCompletedNotification(link: URL?) {
+        guard let link else {
+            send(
+                title: "Upload Complete",
+                body: "Your recording was uploaded to Chorus.",
+                category: NotificationIdentifier.categoryPostProcessing
+            )
+            return
+        }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Upload Complete"
+        content.body = "Your recording was uploaded to Chorus."
+        content.sound = .default
+        content.categoryIdentifier = NotificationIdentifier.categoryChorusUploadCompleted
+        content.userInfo = [UserInfoKey.chorusLink: link.absoluteString]
+
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        Task {
+            do {
+                try await UNUserNotificationCenter.current().add(request)
+                logger.info("Notification sent: Upload Complete")
+            } catch {
+                logger.error("Failed to send notification 'Upload Complete': \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func sendUploadFailedNotification(error: Error) {
+        send(
+            title: "Upload Failed",
+            body: error.localizedDescription,
+            category: NotificationIdentifier.categoryPostProcessingFailed
+        )
+    }
+
     // MARK: - Private Methods
 
     /// Builds and delivers a notification request
@@ -196,6 +303,11 @@ final class NotificationService: NSObject {
         let url = URL(filePath: path)
         NSWorkspace.shared.open(url)
     }
+
+    private func openChorusLink(_ link: String) {
+        guard let url = URL(string: link) else { return }
+        NSWorkspace.shared.open(url)
+    }
 }
 
 // MARK: - UNUserNotificationCenterDelegate
@@ -224,6 +336,15 @@ extension NotificationService: UNUserNotificationCenterDelegate {
             if let folderPath = await userInfo[UserInfoKey.folderURL] as? String {
                 await MainActor.run {
                     openFolderInFinder(path: folderPath)
+                }
+            }
+
+        case NotificationIdentifier.actionOpenChorusLink,
+            UNNotificationDefaultActionIdentifier where await categoryIdentifier == NotificationIdentifier.categoryChorusUploadCompleted:
+            // User tapped the notification or the "Open Link" action
+            if let link = await userInfo[UserInfoKey.chorusLink] as? String {
+                await MainActor.run {
+                    openChorusLink(link)
                 }
             }
 

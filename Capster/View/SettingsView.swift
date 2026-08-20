@@ -31,6 +31,10 @@ struct SettingsView: View {
             Tab("Shortcuts", systemImage: "keyboard") {
                 ShortcutsSettingsView()
             }
+
+            Tab("Automation", systemImage: "wand.and.stars") {
+                AutomationSettingsView(settings: settings)
+            }
         }
         .frame(width: 500, height: 420)
     }
@@ -205,6 +209,140 @@ struct AudioSettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+}
+
+// MARK: - Automation Settings
+
+struct AutomationSettingsView: View {
+    @Bindable var settings: SettingsStore
+
+    @State private var tokenDraft: String = ""
+    @State private var isInstallingHandBrake = false
+    @State private var installStatusText: String?
+    @State private var installErrorText: String?
+
+    private var handBrakeCLIPath: String? {
+        settings.handBrakeCLIURL?.path(percentEncoded: false)
+    }
+
+    var body: some View {
+        Form {
+            Section("HandBrake Transcode") {
+                Toggle("Transcode After Recording", isOn: $settings.handBrakeTranscodeEnabled)
+
+                Picker("Preset", selection: $settings.handBrakePreset) {
+                    ForEach(HandBrakePreset.allCases) { preset in
+                        Text(preset.rawValue).tag(preset)
+                    }
+                }
+                .disabled(!settings.handBrakeTranscodeEnabled)
+
+                Toggle("Delete Original After Transcode", isOn: $settings.deleteOriginalAfterTranscode)
+                    .disabled(!settings.handBrakeTranscodeEnabled)
+                    .help("Removes the original recording once HandBrake finishes successfully, leaving only the transcoded file.")
+
+                LabeledContent("HandBrakeCLI") {
+                    HStack {
+                        Button("Locate HandBrakeCLI…") {
+                            locateHandBrakeCLI()
+                        }
+                        if !settings.hasHandBrakeCLI {
+                            Button(isInstallingHandBrake ? "Installing…" : "Install via Homebrew") {
+                                installHandBrakeCLI()
+                            }
+                            .disabled(isInstallingHandBrake)
+                        }
+                        if settings.hasHandBrakeCLI {
+                            Button("Reset", role: .destructive) {
+                                settings.resetHandBrakeCLI()
+                            }
+                        }
+                    }
+                }
+
+                if isInstallingHandBrake {
+                    Text(installStatusText ?? "Starting…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else if let installErrorText {
+                    Text(installErrorText)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                } else if let handBrakeCLIPath {
+                    Text(handBrakeCLIPath)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    Text("HandBrakeCLI not located. Install it via Homebrew above, or install it yourself (e.g. \"brew install handbrake\") and select the binary.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Chorus.ai Upload") {
+                Toggle("Upload After Recording", isOn: $settings.chorusUploadEnabled)
+
+                SecureField("API Token", text: $tokenDraft)
+                    .disabled(!settings.chorusUploadEnabled)
+                    .onChange(of: tokenDraft) { _, newValue in
+                        settings.chorusAPIToken = newValue
+                    }
+
+                Text("Chorus.ai's upload API contract is unverified against a real account - if uploads fail immediately, this is the first place to check.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+        .task {
+            tokenDraft = settings.chorusAPIToken ?? ""
+        }
+    }
+
+    /// Opens an NSOpenPanel to select the HandBrakeCLI executable
+    private func locateHandBrakeCLI() {
+        let panel = NSOpenPanel()
+        panel.title = "Locate HandBrakeCLI"
+        panel.message = "Select the HandBrakeCLI executable (commonly installed via Homebrew at /opt/homebrew/bin/HandBrakeCLI or /usr/local/bin/HandBrakeCLI)"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(filePath: "/opt/homebrew/bin")
+        panel.treatsFilePackagesAsDirectories = false
+
+        if panel.runModal() == .OK, let url = panel.url {
+            settings.setHandBrakeCLIURL(url)
+        }
+    }
+
+    /// Runs `brew install handbrake` and locates HandBrakeCLI automatically afterward,
+    /// so first-time setup doesn't require leaving Capster for Terminal.
+    private func installHandBrakeCLI() {
+        isInstallingHandBrake = true
+        installErrorText = nil
+        installStatusText = "Starting…"
+
+        Task {
+            let installer = HandBrakeInstallerService()
+            do {
+                let url = try await installer.install { line in
+                    Task { @MainActor in installStatusText = line }
+                }
+                settings.setHandBrakeCLIURL(url)
+                isInstallingHandBrake = false
+                installStatusText = nil
+            } catch {
+                isInstallingHandBrake = false
+                installStatusText = nil
+                installErrorText = error.localizedDescription
+            }
+        }
     }
 }
 

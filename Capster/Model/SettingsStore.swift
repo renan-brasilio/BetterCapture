@@ -217,6 +217,21 @@ enum VideoQuality: String, CaseIterable, Identifiable {
     }
 }
 
+/// Curated HandBrakeCLI presets exposed in Settings, matching the built-in preset names
+/// HandBrakeCLI ships with (verified against `HandBrakeCLI --preset-list`, version 1.11.2).
+enum HandBrakePreset: String, CaseIterable, Identifiable {
+    case veryFast1080p30 = "Very Fast 1080p30"
+    case fast1080p30 = "Fast 1080p30"
+    case hq1080p30Surround = "HQ 1080p30 Surround"
+    case superHQ1080p30Surround = "Super HQ 1080p30 Surround"
+    case h265MKV1080p30 = "H.265 MKV 1080p30"
+
+    var id: String { rawValue }
+
+    /// The exact string passed to `HandBrakeCLI --preset "<value>"`.
+    var cliPresetName: String { rawValue }
+}
+
 /// Describes which ScreenCaptureKit HDR configuration is active, so the
 /// ``AssetWriter`` can tag the output container with matching colorimetry.
 enum HDRPreset {
@@ -244,11 +259,13 @@ final class SettingsStore {
     // MARK: - Dependencies
 
     private let defaults: UserDefaults
+    private let keychain: KeychainServing
 
     // MARK: - Initialization
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, keychain: KeychainServing = KeychainService()) {
         self.defaults = defaults
+        self.keychain = keychain
     }
 
     // MARK: - Recording Behavior Settings
@@ -635,23 +652,17 @@ final class SettingsStore {
             var isStale = false
             let url = try URL(
                 resolvingBookmarkData: bookmarkData,
-                options: .withSecurityScope,
+                options: [],
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
             )
 
-            if isStale {
-                // Bookmark is stale, try to recreate it
-                if url.startAccessingSecurityScopedResource() {
-                    defer { url.stopAccessingSecurityScopedResource() }
-                    if let newBookmark = try? url.bookmarkData(
-                        options: .withSecurityScope,
-                        includingResourceValuesForKeys: nil,
-                        relativeTo: nil
-                    ) {
-                        customOutputDirectoryBookmark = newBookmark
-                    }
-                }
+            if isStale, let newBookmark = try? url.bookmarkData(
+                options: [],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            ) {
+                customOutputDirectoryBookmark = newBookmark
             }
 
             return url
@@ -664,14 +675,9 @@ final class SettingsStore {
     /// Sets a custom output directory from a user-selected URL
     /// - Parameter url: The URL selected by the user via NSOpenPanel
     func setCustomOutputDirectory(_ url: URL) {
-        guard url.startAccessingSecurityScopedResource() else {
-            return
-        }
-        defer { url.stopAccessingSecurityScopedResource() }
-
         do {
             let bookmarkData = try url.bookmarkData(
-                options: .withSecurityScope,
+                options: [],
                 includingResourceValuesForKeys: nil,
                 relativeTo: nil
             )
@@ -686,25 +692,161 @@ final class SettingsStore {
         customOutputDirectoryBookmark = nil
     }
 
-    /// Starts accessing the security-scoped output directory resource
-    /// Call this before writing files to a custom output directory
-    /// - Returns: Whether access was successfully started (always true for default directory)
-    func startAccessingOutputDirectory() -> Bool {
-        guard customOutputDirectoryBookmark != nil else {
-            return true // Default directory doesn't need security scope
+    /// No-ops now that Capster doesn't run under App Sandbox - kept so call sites don't
+    /// need to change if sandboxing is ever reintroduced.
+    func startAccessingOutputDirectory() -> Bool { true }
+
+    func stopAccessingOutputDirectory() {}
+
+    // MARK: - Automation Settings
+
+    /// Whether a finished recording is transcoded with HandBrakeCLI before anything else runs.
+    var handBrakeTranscodeEnabled: Bool {
+        get {
+            access(keyPath: \.handBrakeTranscodeEnabled)
+            return defaults.bool(forKey: "handBrakeTranscodeEnabled")
         }
-        return outputDirectory.startAccessingSecurityScopedResource()
+        set {
+            withMutation(keyPath: \.handBrakeTranscodeEnabled) {
+                defaults.set(newValue, forKey: "handBrakeTranscodeEnabled")
+            }
+        }
     }
 
-    /// Stops accessing the security-scoped output directory resource
-    func stopAccessingOutputDirectory() {
-        guard customOutputDirectoryBookmark != nil else {
-            return // Default directory doesn't need security scope
-        }
-        outputDirectory.stopAccessingSecurityScopedResource()
+    var handBrakePreset: HandBrakePreset {
+        get { HandBrakePreset(rawValue: handBrakePresetRaw) ?? .fast1080p30 }
+        set { handBrakePresetRaw = newValue.rawValue }
     }
+
+    /// Whether the original recording is deleted once HandBrake finishes successfully,
+    /// leaving only the transcoded file behind.
+    var deleteOriginalAfterTranscode: Bool {
+        get {
+            access(keyPath: \.deleteOriginalAfterTranscode)
+            return defaults.bool(forKey: "deleteOriginalAfterTranscode")
+        }
+        set {
+            withMutation(keyPath: \.deleteOriginalAfterTranscode) {
+                defaults.set(newValue, forKey: "deleteOriginalAfterTranscode")
+            }
+        }
+    }
+
+    /// Whether a (possibly transcoded) recording is uploaded to Chorus.ai afterwards.
+    var chorusUploadEnabled: Bool {
+        get {
+            access(keyPath: \.chorusUploadEnabled)
+            return defaults.bool(forKey: "chorusUploadEnabled")
+        }
+        set {
+            withMutation(keyPath: \.chorusUploadEnabled) {
+                defaults.set(newValue, forKey: "chorusUploadEnabled")
+            }
+        }
+    }
+
+    /// Security-scoped bookmark data for the user-located HandBrakeCLI executable.
+    private var handBrakeCLIBookmark: Data? {
+        get {
+            access(keyPath: \.handBrakeCLIBookmark)
+            return defaults.data(forKey: "handBrakeCLIBookmark")
+        }
+        set {
+            withMutation(keyPath: \.handBrakeCLIBookmark) {
+                defaults.set(newValue, forKey: "handBrakeCLIBookmark")
+            }
+        }
+    }
+
+    /// Whether the user has located a HandBrakeCLI binary.
+    var hasHandBrakeCLI: Bool { handBrakeCLIBookmark != nil }
+
+    /// Resolves the HandBrakeCLI bookmark to a URL, refreshing it if stale.
+    /// Returns nil if never set, or if resolution fails (e.g. the binary was moved
+    /// or deleted without re-selecting it in Settings).
+    var handBrakeCLIURL: URL? {
+        guard let bookmarkData = handBrakeCLIBookmark else { return nil }
+
+        do {
+            var isStale = false
+            let url = try URL(
+                resolvingBookmarkData: bookmarkData,
+                options: [],
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+
+            if isStale, let refreshed = try? url.bookmarkData(
+                options: [],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            ) {
+                handBrakeCLIBookmark = refreshed
+            }
+
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    /// Sets the HandBrakeCLI binary location from a user-selected URL (NSOpenPanel result).
+    func setHandBrakeCLIURL(_ url: URL) {
+        guard let bookmarkData = try? url.bookmarkData(
+            options: [],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        ) else { return }
+
+        handBrakeCLIBookmark = bookmarkData
+    }
+
+    /// Clears the located HandBrakeCLI binary.
+    func resetHandBrakeCLI() {
+        handBrakeCLIBookmark = nil
+    }
+
+    /// The Chorus.ai API token, backed by the Keychain rather than plaintext UserDefaults
+    /// since it's a secret. Cached in `chorusAPITokenCache` after first read so `access`/
+    /// `withMutation` still drive SwiftUI updates without hitting the Keychain every time.
+    var chorusAPIToken: String? {
+        get {
+            access(keyPath: \.chorusAPITokenCache)
+            if chorusAPITokenCache == nil {
+                chorusAPITokenCache = .some(keychain.readString(key: Self.chorusTokenKeychainKey))
+            }
+            return chorusAPITokenCache ?? nil
+        }
+        set {
+            withMutation(keyPath: \.chorusAPITokenCache) {
+                chorusAPITokenCache = .some(newValue)
+            }
+            if let newValue, !newValue.isEmpty {
+                try? keychain.saveString(newValue, key: Self.chorusTokenKeychainKey)
+            } else {
+                try? keychain.deleteString(key: Self.chorusTokenKeychainKey)
+            }
+        }
+    }
+
+    private static let chorusTokenKeychainKey = "chorusAPIToken"
+
+    /// nil = not yet loaded from the Keychain, `.some(nil)` = loaded and empty.
+    private var chorusAPITokenCache: String??
 
     // MARK: - Private Storage
+
+    private var handBrakePresetRaw: String {
+        get {
+            access(keyPath: \.handBrakePresetRaw)
+            return defaults.string(forKey: "handBrakePreset") ?? HandBrakePreset.fast1080p30.rawValue
+        }
+        set {
+            withMutation(keyPath: \.handBrakePresetRaw) {
+                defaults.set(newValue, forKey: "handBrakePreset")
+            }
+        }
+    }
 
     private var frameRateRaw: Int {
         get {
